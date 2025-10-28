@@ -1,0 +1,23 @@
+RUN THESE COMMANDS TO FIX THE ERRORS:
+
+cd /mnt/d/compliFi/dashboard
+
+# Install new dependencies
+npm install --legacy-peer-deps
+
+# Restart the dev server
+npm start
+
+This will:
+1. Install crypto-browserify and stream-browserify polyfills
+2. Install react-app-rewired to configure webpack
+3. Configure webpack to use the polyfills
+4. Fix the "Module not found: crypto/stream" errors
+5. Remove unused import warnings
+
+Expected output when it works:
+"Compiled successfully!
+Local: http://localhost:3000"
+
+The warnings about @reown source maps are harmless - they won't prevent the app from working!
+

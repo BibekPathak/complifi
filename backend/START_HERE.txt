@@ -1,0 +1,31 @@
+START THE BACKEND SERVER:
+
+1. Setup MongoDB (choose one):
+
+   A. MongoDB Atlas (Cloud - Easiest):
+      - Go to https://www.mongodb.com/cloud/atlas/register
+      - Create account and cluster
+      - Get connection string
+      - Add to backend/.env file
+   
+   B. Docker (Local):
+      docker run -d --name complifi-mongo -p 27017:27017 mongo:latest
+
+2. Create backend/.env file:
+   
+   MONGODB_URI=mongodb://localhost:27017/complifi
+   PORT=3001
+
+3. Install and start:
+
+   npm install
+   npm start
+
+You should see:
+"CompliFi Backend running on port 3001"
+"MongoDB connected"
+
+4. Go back to dashboard (http://localhost:3000) and refresh!
+
+The error will disappear and data will load! 🎉
+

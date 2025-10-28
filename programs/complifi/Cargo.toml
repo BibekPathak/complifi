@@ -1,0 +1,22 @@
+[package]
+name = "complifi"
+version = "0.1.0"
+description = "On-Chain Compliance Orchestration Layer for Solana"
+license = "MIT"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "complifi"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = { version = "0.29.0", features = ["init-if-needed"] }
+anchor-spl = "0.29.0"
+

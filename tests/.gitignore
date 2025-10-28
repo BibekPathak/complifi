@@ -1,0 +1,4 @@
+# Ignore generated files
+target/
+node_modules/
+

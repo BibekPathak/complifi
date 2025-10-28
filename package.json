@@ -1,0 +1,24 @@
+{
+  "name": "complifi",
+  "version": "1.0.0",
+  "description": "On-Chain Compliance Orchestration Layer for Solana",
+  "scripts": {
+    "install:all": "npm run install:backend && npm run install:frontend && npm run install:sdk",
+    "install:backend": "cd backend && npm install",
+    "install:frontend": "cd dashboard && npm install",
+    "install:sdk": "cd sdk && npm install",
+    "start:backend": "cd backend && npm start",
+    "start:frontend": "cd dashboard && npm start",
+    "test": "anchor test"
+  },
+  "keywords": [
+    "solana",
+    "compliance",
+    "defi",
+    "anchor",
+    "blockchain"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+
