@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 function Dashboard() {
   const [stats, setStats] = useState(null);
   const [logs, setLogs] = useState([]);
   const [violations, setViolations] = useState([]);
+  const [riskScoreLogs, setRiskScoreLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const API_URL = 'http://localhost:3001';
+  const RISK_COLORS = ['#10B981', '#34D399', '#FBBF24', '#F87171', '#EF4444'];
 
   useEffect(() => {
     fetchData();
@@ -20,15 +22,17 @@ function Dashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [statsRes, logsRes, violationsRes] = await Promise.all([
+      const [statsRes, logsRes, violationsRes, riskScoreLogsRes] = await Promise.all([
         axios.get(`${API_URL}/api/stats`),
         axios.get(`${API_URL}/api/logs`),
         axios.get(`${API_URL}/api/violations`),
+        axios.get(`${API_URL}/api/risk-scores`),
       ]);
 
       setStats(statsRes.data);
       setLogs(logsRes.data);
       setViolations(violationsRes.data);
+      setRiskScoreLogs(riskScoreLogsRes.data);
       setError(null);
     } catch (err) {
       console.error('Error fetching data:', err);
@@ -122,6 +126,38 @@ function Dashboard() {
           </ResponsiveContainer>
         </div>
       )}
+      
+      {riskScoreLogs.length > 0 && (
+        <div className="chart-container">
+          <h2>Risk Score Distribution by Category</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie
+                data={[
+                  { name: 'Very Low (0-1)', value: riskScoreLogs.filter(log => log.score <= 1).length },
+                  { name: 'Low (2-3)', value: riskScoreLogs.filter(log => log.score > 1 && log.score <= 3).length },
+                  { name: 'Medium (4-5)', value: riskScoreLogs.filter(log => log.score > 3 && log.score <= 5).length },
+                  { name: 'High (6-7)', value: riskScoreLogs.filter(log => log.score > 5 && log.score <= 7).length },
+                  { name: 'Very High (8-10)', value: riskScoreLogs.filter(log => log.score > 7).length },
+                ]}
+                cx="50%"
+                cy="50%"
+                labelLine={true}
+                outerRadius={120}
+                fill="#8884d8"
+                dataKey="value"
+                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+              >
+                {RISK_COLORS.map((color, index) => (
+                  <Cell key={`cell-${index}`} fill={color} />
+                ))}
+              </Pie>
+              <Tooltip />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       <div className="logs-container">
         <h2>Recent Compliance Logs</h2>
@@ -149,6 +185,45 @@ function Dashboard() {
                 <td>{new Date(log.timestamp).toLocaleString()}</td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+      
+      <div className="logs-container">
+        <h2>Risk Score Audit Logs</h2>
+        <table className="logs-table">
+          <thead>
+            <tr>
+              <th>Wallet</th>
+              <th>Score</th>
+              <th>Source</th>
+              <th>Category</th>
+              <th>Timestamp</th>
+            </tr>
+          </thead>
+          <tbody>
+            {riskScoreLogs.slice(0, 10).map((log, index) => {
+              let category = 'Unknown';
+              if (log.score <= 1) category = 'Very Low';
+              else if (log.score <= 3) category = 'Low';
+              else if (log.score <= 5) category = 'Medium';
+              else if (log.score <= 7) category = 'High';
+              else category = 'Very High';
+              
+              return (
+                <tr key={index}>
+                  <td>{log.wallet ? `${log.wallet.substring(0, 8)}...${log.wallet.substring(log.wallet.length - 8)}` : 'N/A'}</td>
+                  <td>{log.score}/10</td>
+                  <td>{log.source || 'N/A'}</td>
+                  <td>
+                    <span className={`badge badge-${category.toLowerCase().replace(' ', '-')}`}>
+                      {category}
+                    </span>
+                  </td>
+                  <td>{new Date(log.timestamp).toLocaleString()}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -1,6 +1,17 @@
 use anchor_lang::prelude::*;
+mod state;
+mod error;
+pub use state::*;
+pub use error::*;
 
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+declare_id!("JE1YTqS1Z6MR5y7oxVnS6TpnRHTPDcJQg87TzByu5jCk");
+
+// Constants for integration
+const SAS_PROGRAM_ID: &str = "SASFcCrMYnS1ZZz7B4XGpBKMJHrHkGGtT9oJRKrWYAh";
+const RANGE_ORACLE_PROGRAM_ID: &str = "RNG3P5GZ3WjKQjJ1f6yHSHJNLSBV4V5qrDdBvuKKTtd";
+
+// Seeds for PDAs
+pub const KYC_ATTESTATION_SEED: &[u8] = b"kyc-attestation";
 
 #[program]
 pub mod complifi {
@@ -15,6 +26,44 @@ pub mod complifi {
         Ok(())
     }
 
+    /// Initialize a new compliance policy
+    pub fn initialize_policy(ctx: Context<InitializePolicy>) -> Result<()> {
+        let policy = &mut ctx.accounts.policy;
+        policy.authority = ctx.accounts.authority.key();
+        policy.max_risk_score = 3; // Default: Medium risk tolerance
+        policy.require_kyc = true; // Default: Require KYC
+        policy.allowed_jurisdictions = [0; 10]; // Default: No jurisdictions allowed
+        
+        msg!("Compliance policy initialized with default settings");
+        Ok(())
+    }
+    
+    /// Create or update a KYC attestation for a wallet
+    pub fn create_kyc_attestation(
+        ctx: Context<CreateKycAttestation>,
+        wallet: Pubkey,
+        is_verified: bool,
+        jurisdiction: u8,
+    ) -> Result<()> {
+        let attestation = &mut ctx.accounts.attestation;
+        let clock = Clock::get()?;
+        
+        attestation.wallet = wallet;
+        attestation.is_verified = is_verified;
+        attestation.authority = ctx.accounts.authority.key();
+        attestation.timestamp = clock.unix_timestamp;
+        attestation.jurisdiction = jurisdiction;
+        
+        emit!(KycAttestationEvent {
+            wallet,
+            is_verified,
+            jurisdiction,
+        });
+        
+        msg!("KYC attestation created for wallet: {}", wallet);
+        Ok(())
+    }
+
     /// Verify compliance for a user action
     pub fn verify_compliance(
         ctx: Context<VerifyCompliance>,
@@ -22,18 +71,50 @@ pub mod complifi {
         action: String,
     ) -> Result<()> {
         let state = &mut ctx.accounts.state;
+        let policy = &ctx.accounts.policy;
         
-        // Check KYC attestation
-        let kyc_passed = true; // In production: query SAS
-        require!(kyc_passed, CompliFiError::KycNotVerified);
+        // 1. Check KYC attestation using our PDA-based registry
+        if policy.require_kyc {
+            // Find the KYC attestation PDA for this user
+            let (attestation_pda, _) = Pubkey::find_program_address(
+                &[KYC_ATTESTATION_SEED, user.as_ref()],
+                &id()
+            );
+            
+            // Check if the attestation exists and is verified
+            let attestation_account = ctx.accounts.attestation.as_ref();
+            
+            // Verify the attestation is for the correct user
+            require!(attestation_account.wallet == user, CompliFiError::KycNotVerified);
+            
+            // Verify the attestation is valid
+            require!(attestation_account.is_verified, CompliFiError::KycNotVerified);
+            
+            // Check jurisdiction is allowed
+            let jurisdiction_idx = (attestation_account.jurisdiction / 8) as usize;
+            let jurisdiction_bit = 1 << (attestation_account.jurisdiction % 8);
+            
+            if jurisdiction_idx < policy.allowed_jurisdictions.len() {
+                require!(
+                    (policy.allowed_jurisdictions[jurisdiction_idx] & jurisdiction_bit) != 0,
+                    CompliFiError::RestrictedJurisdiction
+                );
+            } else {
+                return err!(CompliFiError::RestrictedJurisdiction);
+            }
+        }
         
-        // Get wallet risk score (in production: query Range oracle)
-        let risk_score = 2u8; // In production: fetch from oracle
-        require!(risk_score < 4, CompliFiError::RiskScoreTooHigh);
+        // 2. Get wallet risk score from Range Security Oracle
+        let risk_score = get_wallet_risk_score(&ctx, &user)?;
+        require!(
+            risk_score <= policy.max_risk_score, 
+            CompliFiError::RiskScoreTooHigh
+        );
         
-        // Increment verification count
+        // 3. Increment verification count
         state.verification_count = state.verification_count.checked_add(1).unwrap();
         
+        // 4. Emit verification event
         emit!(VerificationEvent {
             user,
             action,
@@ -41,6 +122,7 @@ pub mod complifi {
             risk_score,
         });
         
+        msg!("Compliance verification passed for user: {}", user);
         Ok(())
     }
 
@@ -49,13 +131,19 @@ pub mod complifi {
         ctx: Context<SetPolicy>,
         max_risk_score: u8,
         require_kyc: bool,
+        allowed_jurisdictions: [u8; 10],
     ) -> Result<()> {
         let policy = &mut ctx.accounts.policy;
+        
+        // Validate policy parameters
+        require!(max_risk_score <= 10, CompliFiError::InvalidPolicyParameters);
+        
         policy.max_risk_score = max_risk_score;
         policy.require_kyc = require_kyc;
-        policy.authority = ctx.accounts.authority.key();
+        policy.allowed_jurisdictions = allowed_jurisdictions;
         
-        msg!("Policy updated: max_risk_score={}, require_kyc={}", max_risk_score, require_kyc);
+        msg!("Policy updated: max_risk_score={}, require_kyc={}", 
+            max_risk_score, require_kyc);
         
         Ok(())
     }
@@ -74,8 +162,33 @@ pub mod complifi {
             reason,
         });
         
+        msg!("Compliance violation recorded for user: {}", user);
         Ok(())
     }
+}
+
+// Helper function to verify attestation with SAS
+fn verify_attestation(ctx: &Context<VerifyCompliance>, user: &Pubkey) -> Result<bool> {
+    // In a real implementation, we would call the SAS program here
+    // For hackathon purposes, we'll simulate this check
+    
+    msg!("Verifying KYC attestation for user: {}", user);
+    
+    // Simulated attestation check - in production this would call the SAS program
+    // and verify the attestation cryptographically
+    Ok(true)
+}
+
+// Helper function to get wallet risk score from Range Oracle
+fn get_wallet_risk_score(ctx: &Context<VerifyCompliance>, user: &Pubkey) -> Result<u8> {
+    // In a real implementation, we would call the Range Oracle program here
+    // For hackathon purposes, we'll simulate this check
+    
+    msg!("Fetching risk score for user: {}", user);
+    
+    // Simulated risk score - in production this would call the Range Oracle
+    // and fetch the actual risk score for the wallet
+    Ok(2) // Low-medium risk
 }
 
 #[derive(Accounts)]
@@ -94,17 +207,9 @@ pub struct Initialize<'info> {
 }
 
 #[derive(Accounts)]
-pub struct VerifyCompliance<'info> {
-    #[account(mut)]
-    pub state: Account<'info, ComplianceState>,
-    
-    pub user: AccountInfo<'info>,
-}
-
-#[derive(Accounts)]
-pub struct SetPolicy<'info> {
+pub struct InitializePolicy<'info> {
     #[account(
-        init_if_needed,
+        init,
         payer = authority,
         space = 8 + CompliancePolicy::LEN
     )]
@@ -117,58 +222,69 @@ pub struct SetPolicy<'info> {
 }
 
 #[derive(Accounts)]
+pub struct VerifyCompliance<'info> {
+    #[account(mut)]
+    pub state: Account<'info, ComplianceState>,
+    
+    #[account(
+        constraint = policy.authority == state.authority @ CompliFiError::Unauthorized
+    )]
+    pub policy: Account<'info, CompliancePolicy>,
+    
+    pub authority: Signer<'info>,
+    
+    /// CHECK: Only the public key is used to look up attestations/risk off-chain; no data is read or written.
+    pub user: UncheckedAccount<'info>,
+    
+    #[account(
+        seeds = [KYC_ATTESTATION_SEED, user.key().as_ref()],
+        bump,
+    )]
+    pub attestation: Account<'info, KycAttestation>,
+}
+
+#[derive(Accounts)]
+pub struct CreateKycAttestation<'info> {
+    #[account(
+        init_if_needed,
+        payer = authority,
+        space = 8 + KycAttestation::LEN,
+        seeds = [KYC_ATTESTATION_SEED, wallet.key().as_ref()],
+        bump
+    )]
+    pub attestation: Account<'info, KycAttestation>,
+    
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    
+    #[account(mut)]
+    pub state: Account<'info, ComplianceState>,
+    
+    /// CHECK: This is the wallet we're creating an attestation for
+    pub wallet: UncheckedAccount<'info>,
+    
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct SetPolicy<'info> {
+    #[account(
+        mut,
+        constraint = policy.authority == authority.key() @ CompliFiError::Unauthorized
+    )]
+    pub policy: Account<'info, CompliancePolicy>,
+    
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
 pub struct RecordViolation<'info> {
     #[account(mut)]
     pub state: Account<'info, ComplianceState>,
-}
-
-#[account]
-pub struct ComplianceState {
-    pub authority: Pubkey,
-    pub verification_count: u64,
-    pub violation_count: u64,
-}
-
-impl ComplianceState {
-    pub const LEN: usize = 32 + 8 + 8;
-}
-
-#[account]
-pub struct CompliancePolicy {
-    pub authority: Pubkey,
-    pub max_risk_score: u8,
-    pub require_kyc: bool,
-}
-
-impl CompliancePolicy {
-    pub const LEN: usize = 32 + 1 + 1;
-}
-
-#[event]
-pub struct VerificationEvent {
-    pub user: Pubkey,
-    pub action: String,
-    pub verified: bool,
-    pub risk_score: u8,
-}
-
-#[event]
-pub struct ViolationEvent {
-    pub user: Pubkey,
-    pub reason: String,
-}
-
-#[error_code]
-pub enum CompliFiError {
-    #[msg("KYC not verified")]
-    KycNotVerified,
     
-    #[msg("Risk score too high")]
-    RiskScoreTooHigh,
-    
-    #[msg("Transaction amount exceeds limit for non-KYC users")]
-    AmountExceedsLimit,
-    
-    #[msg("Jurisdiction not allowed")]
-    JurisdictionNotAllowed,
+    #[account(
+        constraint = authority.key() == state.authority @ CompliFiError::Unauthorized
+    )]
+    pub authority: Signer<'info>,
 }
+

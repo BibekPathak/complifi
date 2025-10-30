@@ -41,6 +41,29 @@ const violationLogSchema = new mongoose.Schema({
 
 const ViolationLog = mongoose.model('ViolationLog', violationLogSchema);
 
+// KYC Attestation Schema
+const kycAttestationSchema = new mongoose.Schema({
+  wallet: { type: String, required: true, unique: true },
+  is_verified: { type: Boolean, default: false },
+  jurisdiction: { type: Number, default: 0 },
+  timestamp: { type: Date, default: Date.now },
+  tx_signature: String,
+});
+
+const KycAttestation = mongoose.model('KycAttestation', kycAttestationSchema);
+
+// Risk Score Log Schema
+const riskScoreLogSchema = new mongoose.Schema({
+  wallet: { type: String, required: true },
+  score: { type: Number, required: true },
+  source: { type: String, enum: ['predefined', 'random', 'oracle'], default: 'random' },
+  timestamp: { type: Date, default: Date.now },
+  metadata: { type: Object, default: {} },
+  tx_signature: String,
+});
+
+const RiskScoreLog = mongoose.model('RiskScoreLog', riskScoreLogSchema);
+
 // Middleware
 app.use(express.json());
 
@@ -135,6 +158,83 @@ app.get('/api/stats', async (req, res) => {
       complianceRate: 0,
       timestamp: new Date().toISOString(),
     });
+  }
+});
+
+// KYC Attestation endpoints
+app.get('/api/kyc', async (req, res) => {
+  try {
+    const attestations = await KycAttestation.find().sort({ timestamp: -1 }).limit(100);
+    res.json(attestations);
+  } catch (error) {
+    console.error('Error fetching KYC attestations:', error);
+    res.status(200).json([]); // Return empty array instead of error
+  }
+});
+
+app.get('/api/kyc/:wallet', async (req, res) => {
+  try {
+    const attestation = await KycAttestation.findOne({ wallet: req.params.wallet });
+    if (!attestation) {
+      return res.status(404).json({ error: 'KYC attestation not found' });
+    }
+    res.json(attestation);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/kyc', async (req, res) => {
+  try {
+    const { wallet, is_verified, jurisdiction, tx_signature } = req.body;
+    
+    // Update or create KYC attestation
+    const attestation = await KycAttestation.findOneAndUpdate(
+      { wallet },
+      { wallet, is_verified, jurisdiction, tx_signature, timestamp: new Date() },
+      { upsert: true, new: true }
+    );
+    
+    res.json(attestation);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Risk Score Log endpoints
+app.get('/api/risk-scores', async (req, res) => {
+  try {
+    const logs = await RiskScoreLog.find().sort({ timestamp: -1 }).limit(100);
+    res.json(logs);
+  } catch (error) {
+    console.error('Error fetching risk score logs:', error);
+    res.status(200).json([]); // Return empty array instead of error
+  }
+});
+
+app.get('/api/risk-scores/:wallet', async (req, res) => {
+  try {
+    const logs = await RiskScoreLog.find({ wallet: req.params.wallet }).sort({ timestamp: -1 }).limit(20);
+    res.json(logs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/risk-scores', async (req, res) => {
+  try {
+    const { wallet, score, source, metadata, tx_signature } = req.body;
+    const log = new RiskScoreLog({
+      wallet,
+      score,
+      source: source || 'random',
+      metadata: metadata || {},
+      tx_signature
+    });
+    await log.save();
+    res.json(log);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
