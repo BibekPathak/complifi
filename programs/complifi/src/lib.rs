@@ -4,7 +4,7 @@ mod error;
 pub use state::*;
 pub use error::*;
 
-declare_id!("JE1YTqS1Z6MR5y7oxVnS6TpnRHTPDcJQg87TzByu5jCk");
+declare_id!("8n1D2rYYeUnfrWN4qTDHAvvbEokbPop6cbeSNZ3brNeU");
 
 // Constants for integration
 const SAS_PROGRAM_ID: &str = "SASFcCrMYnS1ZZz7B4XGpBKMJHrHkGGtT9oJRKrWYAh";
@@ -70,19 +70,18 @@ pub mod complifi {
         user: Pubkey,
         action: String,
     ) -> Result<()> {
-        let state = &mut ctx.accounts.state;
         let policy = &ctx.accounts.policy;
         
         // 1. Check KYC attestation using our PDA-based registry
         if policy.require_kyc {
             // Find the KYC attestation PDA for this user
-            let (attestation_pda, _) = Pubkey::find_program_address(
+            let (_attestation_pda, _) = Pubkey::find_program_address(
                 &[KYC_ATTESTATION_SEED, user.as_ref()],
                 &id()
             );
             
             // Check if the attestation exists and is verified
-            let attestation_account = ctx.accounts.attestation.as_ref();
+            let attestation_account: &KycAttestation = &ctx.accounts.attestation;
             
             // Verify the attestation is for the correct user
             require!(attestation_account.wallet == user, CompliFiError::KycNotVerified);
@@ -112,6 +111,7 @@ pub mod complifi {
         );
         
         // 3. Increment verification count
+        let state = &mut ctx.accounts.state;
         state.verification_count = state.verification_count.checked_add(1).unwrap();
         
         // 4. Emit verification event
