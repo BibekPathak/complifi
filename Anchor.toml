@@ -3,14 +3,14 @@ no-idl = []
 no-log-ix = []
 cpi = true
 
-[programs.localnet]
-complifi = "JE1YTqS1Z6MR5y7oxVnS6TpnRHTPDcJQg87TzByu5jCk"
+[programs.devnet]
+complifi = "8n1D2rYYeUnfrWN4qTDHAvvbEokbPop6cbeSNZ3brNeU"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
@@ -30,4 +30,3 @@ version = "0.32.1"
 
 [toolchain]
 anchor_version = "0.32.1"
-
