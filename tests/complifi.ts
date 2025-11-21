@@ -1,6 +1,7 @@
 /* eslint-env mocha */
 import * as anchor from '@coral-xyz/anchor';
 import { expect } from 'chai';
+import { Buffer } from 'buffer';
 
 // Use local provider (Anchor.toml -> Localnet)
 const provider = (anchor as any).AnchorProvider.env();
@@ -45,12 +46,56 @@ describe('complifi program', () => {
 			.signers([state])
 			.rpc();
 
+		// create policy
+		const policy = (anchor as any).web3.Keypair.generate();
+		await program.methods
+			.initializePolicy()
+			.accounts({
+				policy: policy.publicKey,
+				authority,
+				systemProgram: (anchor as any).web3.SystemProgram.programId,
+			})
+			.signers([policy])
+			.rpc();
+
+		// set policy to allow jurisdiction 0 and higher risk threshold
+		const allowed: number[] = new Array(10).fill(0);
+		allowed[0] = 1; // allow jurisdiction bit 0
+		await program.methods
+			.setPolicy(5, true, allowed as any)
+			.accounts({
+				policy: policy.publicKey,
+				authority,
+			})
+			.rpc();
+
+		// derive attestation PDA for authority wallet
+		const [attestationPda] = (anchor as any).web3.PublicKey.findProgramAddressSync(
+			[Buffer.from('kyc-attestation'), authority.toBuffer()],
+			program.programId,
+		);
+
+		// create KYC attestation for authority in jurisdiction 0
+		await program.methods
+			.createKycAttestation(authority, true, 0)
+			.accounts({
+				attestation: attestationPda,
+				authority,
+				state: state.publicKey,
+				wallet: authority,
+				systemProgram: (anchor as any).web3.SystemProgram.programId,
+			})
+			.rpc();
+
 		// verify compliance (uses UncheckedAccount for user)
 		await program.methods
 			.verifyCompliance(authority, 'swap')
 			.accounts({
 				state: state.publicKey,
+				policy: policy.publicKey,
+				authority,
 				user: authority,
+				attestation: attestationPda,
 			})
 			.rpc();
 
