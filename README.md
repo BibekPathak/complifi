@@ -90,41 +90,75 @@ complifi/
 
 ### Prerequisites
 
-- Node.js 18+
-- Rust and Solana CLI
-- Anchor CLI
-- MongoDB
+- **Node.js 18+**
+- **Rust and Solana CLI** (installed and configured)
+- **MongoDB** (local instance or MongoDB Atlas)
+- **WSL/Ubuntu** (recommended on Windows for Anchor development)
+- **Rust Toolchain 1.74.1** (required for Anchor 0.32.1 compatibility)
+- **Anchor CLI 0.32.1**
 
-### Installation
+### Setup Instructions
 
-#### 1. Install Backend Dependencies
+#### 1. Configure Rust Toolchain (IMPORTANT)
+
+Anchor 0.32.1 requires Rust 1.74.1. If you're using a newer version, you'll encounter build errors.
+
+**In WSL/Ubuntu:**
+
+```bash
+# Install and set Rust 1.74.1
+rustup toolchain install 1.74.1
+cd /mnt/d/compliFi  # or your project path
+rustup override set 1.74.1
+
+# Verify version
+rustc --version  # should show 1.74.1
+```
+
+#### 2. Install Anchor CLI
+
+```bash
+# Option A: Install via cargo (may require newer Rust temporarily)
+rustup toolchain install 1.82.1
+rustup default 1.82.1
+cargo install --locked --force anchor-cli --version 0.32.1
+rustup default 1.74.1  # Switch back
+
+# Option B: Use AVM (Anchor Version Manager)
+cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+avm install 0.32.1
+avm use 0.32.1
+
+# Verify installation
+anchor --version  # should show 0.32.1
+```
+
+#### 3. Install Backend Dependencies
 
 ```bash
 cd backend
 npm install
 ```
 
-#### 2. Install Frontend Dependencies
+#### 4. Install Frontend Dependencies
 
 ```bash
 cd dashboard
 npm install
 ```
 
-#### 3. Install SDK
+#### 5. Install Test Dependencies
 
 ```bash
-cd sdk
-npm install
+# From project root
+npm install -D ts-mocha ts-node typescript chai @types/chai @types/mocha @coral-xyz/anchor
 ```
 
-#### 4. Build Anchor Program
+#### 6. Build Anchor Program
 
 ```bash
-# Install Anchor if not already installed
-cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
-avm install latest
-avm use latest
+# Make sure you're using Rust 1.74.1
+rustup override set 1.74.1
 
 # Build the program
 anchor build
@@ -134,8 +168,18 @@ anchor build
 
 #### Start MongoDB
 
+**Option A: Docker (Recommended)**
+
 ```bash
-# Make sure MongoDB is running locally or update connection string
+docker run -d -p 27017:27017 --name mongodb mongo:latest
+```
+
+**Option B: MongoDB Atlas**
+
+Update the connection string in `backend/src/index.js`:
+
+```javascript
+const MONGODB_URI = process.env.MONGODB_URI || 'your-atlas-connection-string';
 ```
 
 #### Start Backend Server
@@ -154,11 +198,59 @@ npm start
 # Dashboard runs on http://localhost:3000
 ```
 
-#### Run Tests (when Anchor is set up)
+#### Run Tests
 
 ```bash
+# From project root (in WSL/Ubuntu)
 anchor test
 ```
+
+### Project Features
+
+This implementation includes:
+
+- **Mock SAS (Solana Attestation Service)** with PDA-based registry for KYC attestations
+- **Mock Range Security Oracle** with risk scores from 0-5
+- **On-chain compliance verification** with KYC, risk score, and jurisdiction checks
+- **Express backend** for audit logging and violation tracking
+- **React dashboard** with Solana Wallet Adapter integration
+- **SDK** for easy dApp integration
+
+### Troubleshooting
+
+#### Build Errors
+
+**Error: `no method named local_file found for struct proc_macro::Span`**
+
+This means your Rust toolchain is too new. Ensure you're using Rust 1.74.1:
+
+```bash
+rustup override set 1.74.1
+cargo clean
+anchor build
+```
+
+**Error: `Stack offset exceeded`**
+
+Also a toolchain issue. Use Rust 1.74.1 as specified above.
+
+**Error: `DeclaredProgramIdMismatch`**
+
+The program ID in `programs/complifi/src/lib.rs` must match `Anchor.toml`. Current ID: `JE1YTqS1Z6MR5y7oxVnS6TpnRHTPDcJQg87TzByu5jCk`
+
+#### Frontend Issues
+
+If you see webpack errors about missing polyfills (`crypto`, `stream`), the `config-overrides.js` should handle this. If not:
+
+```bash
+cd dashboard
+rm -rf node_modules package-lock.json
+npm install
+```
+
+#### Backend Issues
+
+If the backend returns 500 errors, check MongoDB connection. The API gracefully handles missing MongoDB with empty responses for demo purposes.
 
 ## 📖 Usage
 
